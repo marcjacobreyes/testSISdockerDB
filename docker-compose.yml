@@ -1,0 +1,100 @@
+version: '3'
+services:
+  #Ascender SIS database running on mysql image, communication established
+  #with phpmyadmin client.
+  ascender-mysql:
+    image: mysql:latest # image that the ascender database will run on
+    environment:
+      MYSQL_USER: ascender
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ascender # this is where we name the db, end of envrionment variables section
+    ports:
+      - "3306:3306" # Expose port 3306 to the host from the container port 3306
+    networks:
+      - sis-net # Links to the sis-net network
+    restart: always # restart the container if it stops
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 3 # end of healthcheck section
+    volumes:
+      - ./ascender-data:/var/lib/mysql # create a volume to store ascender database data
+
+#Clever SIS database running on postgresql, communication established with pgadmin client.
+  clever-postgres:
+    image: postgres:alpine3.18 #image that the clever database will run on
+    environment:
+      POSTGRES_USER: clever
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: clever # end of environment variables section
+    ports:
+      - "5432:5432" # Expose port 5432 to the host from the container port 5432
+    networks:
+      - sis-net # Links to the sis-net network
+    restart: always # restart the container if it stops
+    volumes:
+      - ./clever-data:/var/lib/postgresql/data # create a volume to store clever database data
+
+#PGAdmin web based client for postgresql to communicate with clever-postgres database server
+  pgadmin:
+    image: dpage/pgadmin4:latest # image that the pgadmin client will run on
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD} # end of environment variables section
+    ports:
+      - "8080:80" # Expose port 8080 to the host from the container port 80
+    depends_on:
+      - clever-postgres  # Links to the clever-postgres database server
+    networks:
+      - sis-net # Links to the sis-net network
+    restart: always #restart the container if it stops
+
+#Roster server running on mariadb communication established with phpmyadmin client.
+  roster-server:
+    image: mariadb:latest
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - "3308:3306"
+    networks:
+      - sis-net
+    volumes:
+      - ./roster-data:/var/lib/mysql
+    restart: always #restart the container if it stops
+
+#Phpmyadmin client to communicate with the ascender database server running on mysql.
+  mysql-phpmyadmin:
+    image: phpmyadmin:latest
+    ports:
+      - "3307:80"
+    networks:
+      - sis-net
+    environment:
+      PMA_ARBITRARY: 1
+      PMA_HOST: ascender-mysql #Connect to the mysql ascender server
+    restart: always #restart the container if it stops
+    depends_on:
+      - ascender-mysql #Links to ascender-mysql
+
+#Phpmyadmin client to communicate with the roster server database server running on mariadb.
+  mariadb-phpmyadmin:
+    image: phpmyadmin:latest
+    ports:
+      - "3309:80"
+    networks:
+      - sis-net
+    environment:
+      PMA_ARBITRARY: 1
+      PMA_HOST: roster-server #Connect to the mariadb roster server
+    restart: always #restart the container if it stops
+    depends_on:
+      - roster-server #Links to roster-server
+
+#virtual network that can be used by the docker containers and different services
+# to communicate with each other.
+networks:
+  sis-net:
+    driver: bridge
